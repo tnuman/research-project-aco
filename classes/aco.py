@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import time
 from enum import IntEnum
@@ -14,8 +15,8 @@ import copy
 from typing import List
 
 t_0 = 0.1
-MAX_EPOCHS_WITHOUT_IMPROVEMENT = 5
-POPULATION_SIZE = 10
+# MAX_EPOCHS_WITHOUT_IMPROVEMENT = 5
+# POPULATION_SIZE = 20
 # Cutting exploration parameter, between 0 and 1
 q_0 = 0.3
 # Weights for respectively pheromone amount and visibility function
@@ -36,32 +37,38 @@ def run_solver(fileName, time=0):
     #                       changeOvers=mod.changeOvers, orders=mod.orders)
     # return alg.build_model("solutions/milp/milp_solution_" + fileName + "_" + str(time) + "s"
     # + '.csv', time)
-    dummy_start: OperationNode = OperationNode(None, None, is_dummy_start=True)
-    dummy_finish: OperationNode = OperationNode(None, None, is_dummy_finish=True)
 
-    operationTypes: list[OperationType] = []
-    # print(mod.machineAlternatives.keys())
-    for operation_number in mod.machineAlternatives.keys():
-        # print(operation_number)
-        operation_type = OperationType(operation_number)
-        # print(operation_type)
-        operationTypes.append(operation_type)
-        for machine_number in mod.machineAlternatives[operation_number]:
-            changeOvers = {(k[1], k[2]): v for k, v in mod.changeOvers.items() if k[0] == machine_number}
-            operation_type.available_machines.append(Machine(machine_number, dummy_start, changeOvers))
-        # print(operation_type.available_machines)
+    dummy_start: OperationNode = OperationNode(None, None, [], is_dummy_start=True)
+    # dummy_finish: OperationNode = OperationNode(None, None, is_dummy_finish=True)
+
+    # operationTypes: list[OperationType] = []
+    # # print(mod.machineAlternatives.keys())
+    # for operation_number in mod.machineAlternatives.keys():
+    #     # print(operation_number)
+    #     operation_type = OperationType(operation_number)
+    #     # print(operation_type)
+    #     operationTypes.append(operation_type)
+    #     for machine_number in mod.machineAlternatives[operation_number]:
+    #         changeOvers = {(k[1], k[2]): v for k, v in mod.changeOvers.items() if k[0] == machine_number}
+    #         operation_type.available_machines.append(Machine(machine_number, dummy_start, changeOvers))
+    #     # print(operation_type.available_machines)
+
+    machines: list[Machine] = []
+    for machine_number in mod.machines:
+        changeOvers = {(k[1], k[2]): v for k, v in mod.changeOvers.items() if k[0] == machine_number}
+        machines.append(Machine(machine_number, dummy_start, changeOvers))
 
     # Group nodes per operation type/machine pool (same grouping in this case)
     # nodes_grouped_per_operation: list[list[OperationNode]] = [[], [], []]
     # edges: set[Edge]
+
     total_number_of_operations: int = 0
     jobs: list[Job] = []
     for i in range(mod.nr_jobs):
         job: Job = Job(i, mod.orders[i]['product'], mod.orders[i]['due'])
         jobs.append(job)
-        current_node = OperationNode(job, operationTypes[mod.operations[i][0]]
-                                     , processing_time = mod.processingTimes[(i, mod.operations[i][0]
-                                                                                , operationTypes[mod.operations[i][0]].available_machines[0].number)])
+        current_node = OperationNode(job, mod.operations[i][0], [machines[machine_number] for machine_number in mod.machineAlternatives[(i, mod.operations[i][0])]],
+                                     processing_time=mod.processingTimes[(i, mod.operations[i][0], mod.machineAlternatives[(i, mod.operations[i][0])][0])])
         current_node.previous_operation_of_job = dummy_start
         total_number_of_operations += 1
         # nodes_grouped_per_operation[mod.operations(i)[0]].append(current_node)
@@ -72,9 +79,8 @@ def run_solver(fileName, time=0):
         j = 1
         while j < len(mod.operations[i]):
             previous_node = current_node
-            current_node = OperationNode(job, operationTypes[mod.operations[i][j]],
-                                         processing_time = mod.processingTimes[(i, mod.operations[i][j]
-                                                                                , operationTypes[mod.operations[i][j]].available_machines[0].number)])
+            current_node = OperationNode(job, mod.operations[i][j], [machines[machine_number] for machine_number in mod.machineAlternatives[(i, mod.operations[i][j])]],
+                                         processing_time=mod.processingTimes[(i, mod.operations[i][j], mod.machineAlternatives[(i, mod.operations[i][j])][0])])
             total_number_of_operations += 1
             # nodes_grouped_per_operation[mod.operations(i)[j]].append(current_node)
             # edges.append((previous_node, current_node), True)
@@ -100,7 +106,15 @@ def run_solver(fileName, time=0):
     #     default_changeOvers[k] = v
     # print(default_changeOvers)
 
-    ant_colony_optimization(jobs, total_number_of_operations)
+    best_ant = ant_colony_optimization(jobs, total_number_of_operations, mod.nr_jobs, time_limit=time)
+
+    path = os.path.join("../solutions/aco/aco_solution_" + fileName + "_" + str(time) + "s" + '.csv')
+    file = open(path, "w")
+    file.write("Machine,Job,Operation,Start,Completion\n")
+    for move in sorted(best_ant.moves, key = lambda x: (x.o_to.job.number, x.o_to.number)):
+        file.write(f"{move.machine.number}, {move.o_to.job.number}, {move.o_to.number}, "
+                   f"{move.start_time}, {move.o_to.completion_time}\n")
+    return best_ant.makespan
 
 # Input: a weighted digraph WDG = (N_F, A, E_jh, W_N, W_E) ----------------------------------------
 #
@@ -143,37 +157,39 @@ class Job:
         self.due_date = due_date
         self.first_unscheduled_operation = first_unscheduled_operation
 
-class OperationType:
-    # PREPERATION = 0
-    # FILTERING = 1
-    # RECEPTION = 2
-
-    def __init__(self, number: int):
-        self.number = number
-        self.available_machines = []
+# class OperationType:
+#     # PREPERATION = 0
+#     # FILTERING = 1
+#     # RECEPTION = 2
+#
+#     def __init__(self, number: int):
+#         self.number = number
+#         self.available_machines = []
 
 class OperationNode:
-    def __init__(self, job: Job, operation_type: OperationType, previous_operation_of_job: OperationNode = None,
+    def __init__(self, job: Job, number: int, available_machines: list[Machine], previous_operation_of_job: OperationNode = None,
                  next_operation_of_job: OperationNode = None, processing_time: int = 0,
                  # outgoing_directed_edges: list[DirectedEdge] = [], undirected_edges: dict[Machine, list[UndirectedEdge]] = [],
                  is_dummy_start: bool = False, is_dummy_finish: bool = False) -> None:
         self.job = job
-        self.operationType = operation_type
+        # self.operationType = operation_type
         # self.outgoing_directed_edges = outgoing_directed_edges
         # self.undirected_edges = undirected_edges
+        self.number = number
         self.is_dummy_start = is_dummy_start
         self.is_dummy_finish = is_dummy_finish
         self.completion_time = 0
         self.previous_operation_of_job = previous_operation_of_job
         self.processing_time = processing_time
         self.next_operation_of_job = next_operation_of_job
+        self.available_machines = available_machines
 
     def __repr__(self):
-        return "Node(%s, %s)" % (self.job, self.operationType)
+        return "Node(%s, %s)" % (self.job, self.number)
 
     def __eq__(self, other):
         if isinstance(other, OperationNode):
-            return (self.job == other.job and self.operationType == other.operationType)
+            return (self.job == other.job and self.number == other.number)
         else:
             return False
 
@@ -199,6 +215,7 @@ class Move():
         self.o_from = o_from
         self.o_to = o_to
         self.machine = machine
+        self.start_time = -1
 
     def __hash__(self):
         return hash((self.o_from, self.o_to, self.machine))
@@ -207,11 +224,18 @@ class Move():
         return self.o_from == other.o_from and self.o_to == other.o_to and self.machine == other.machine
 
     def visibility_function(self):
-        if self.o_from.is_dummy_start or self.o_to.is_dummy_finish:
-            change_over = 1
-        else:
-            change_over = self.machine.change_over_times[(self.o_from.job.enzyme_type, self.o_to.job.enzyme_type)]
-        return 1/change_over
+        self.start_time = self.o_to.previous_operation_of_job.completion_time
+        # print(selected_move.machine.change_over_times)
+        if not (self.o_from.is_dummy_start):
+            self.start_time = max(self.o_from.completion_time
+                             + self.machine.change_over_times[(self.o_from.job.enzyme_type, self.o_to.job.enzyme_type)],
+                             self.start_time)
+        return 1/(self.start_time+1)
+        # if self.o_from.is_dummy_start or self.o_to.is_dummy_finish or self.machine.change_over_times[(self.o_from.job.enzyme_type, self.o_to.job.enzyme_type)] == 0:
+        #     change_over = 1
+        # else:
+        #     change_over = self.machine.change_over_times[(self.o_from.job.enzyme_type, self.o_to.job.enzyme_type)]
+        # return 1/change_over
 
 # class WeightedDisjunctiveGraph:
 #     def __init__(self, edges: set[Edge], nodes: set[OperationNode], dummy_start: OperationNode, dummy_end: OperationNode) \
@@ -222,8 +246,9 @@ class Move():
 #         self.dummy_end = dummy_end
 
 class Ant:
-    def __init__(self) -> None:
+    def __init__(self, makespan = -1) -> None:
         self.moves: list[Move] = []
+        self.makespan = makespan
 
 class Machine:
     def __init__(self, number, dummy_start: OperationNode, change_over_times):
@@ -232,12 +257,11 @@ class Machine:
         self.change_over_times = change_over_times
 
 # Initialization ----------------------------------------------------------------------------------
-def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, time_limit: int = None):
+def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, population_size, max_epochs_without_improvement = -1, time_limit: int = None):
     start = time.time()
 
     epochs_without_improvement = 0
-    best_schedule = None
-    best_makespan = sys.maxsize
+    best_ant_overall = Ant(makespan=sys.maxsize)
 
     # Main loop -----------------------------------------------------------------------------------
 
@@ -247,19 +271,17 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
     # TODO (potentially): implement better optimality condition
     # Also add option for time_limit: if the algorithm is still running when this is reached,
     # it is stopped and the best solution found up until now is returned
-    while (epochs_without_improvement < MAX_EPOCHS_WITHOUT_IMPROVEMENT
+    while ((max_epochs_without_improvement == -1 or epochs_without_improvement < max_epochs_without_improvement)
            and (time_limit == None or time.time() - start < time_limit)):
 
         ants: list[Ant] = []
 
         # For each ant a = 1 to ps, place the ant on a randomly chosen operation O_ij0
-        for i in range(POPULATION_SIZE):
+        for i in range(population_size):
             ants.append(Ant())
 
         # Epoch Loop ---
-
-        best_makespan_this_epoch = sys.maxsize
-        best_ant_this_epoch = None
+        best_ant_this_epoch = Ant(makespan=sys.maxsize)
 
         # For each ant a, a = 1 to ps do
         for ant in ants:
@@ -270,7 +292,6 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
             # O <- {O_ijr ∣ i=1,..,n,j=1,..,m,r=1,..,l_i}
             # ant_nodes: set[OperationNode] = copy.deepcopy(wdg.nodes)
             ant_jobs: list[Job] = copy.deepcopy(jobs)
-            makespan: int = 0
 
             # For each w = 1 to [Σ_(i=1,..,n) l_i] do
             for w in range(total_number_of_operations):
@@ -303,7 +324,7 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
                 feasible_moves: list[Move] = []
                 # print(candidate_list)
                 for o in candidate_list:
-                    for machine in o.operationType.available_machines:
+                    for machine in o.available_machines:
                         o_prime = machine.loading_sequence[-1]
                         feasible_moves.append(Move(o_prime, o, machine))
                         #at the moment no distinction is made for on which actual machine in the machine pool the move is
@@ -366,6 +387,7 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
                 # Add directed edge (O_i'jr', O_ijr)
                 # selected_move.o_from.outgoing_directed_edges.add(DirectedEdge(selected_move.o_from, selected_move.o_to))
                 selected_move.machine.loading_sequence.append(selected_move.o_to)
+                ant.moves.append(selected_move)
 
                 # 5. Arcs Removal: remove all the remaining disjunctive arcs connected to O_i'jr'
                 # (i.e. no other operation can be immediately subsequent to O_i'jr' in the loading
@@ -397,7 +419,7 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
                 selected_move.o_to.completion_time = start_time + selected_move.o_to.processing_time
                 # print(selected_move.o_to)
                 # print(selected_move.o_to.completion_time)
-                makespan = max(makespan, selected_move.o_to.completion_time)
+                ant.makespan = max(ant.makespan, selected_move.o_to.completion_time)
                 # print(str(selected_move.o_to.job.number) + ", " + str(selected_move.o_to.operationType.number) + ": " + str(selected_move.o_to.completion_time))
 
                 #8. Updating Structures: update O by removing operation O_ijr
@@ -420,10 +442,12 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
                 # S_best_this_epoch <- S_a
             # End if
             # print(makespan)
-            if (makespan < best_makespan_this_epoch):
-                # print(makespan)
-                best_makespan_this_epoch = makespan
-                best_ant_this_epoch = ant
+            if (time_limit == None or time.time() - start < time_limit):
+                if (ant.makespan < best_ant_this_epoch.makespan):
+                    # print(makespan)
+                    best_ant_this_epoch = ant
+            else:
+                break
 
         # End for
 
@@ -431,8 +455,9 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
         # all the moves of S_b
         # From Rossi papers: τ(O_ijr, O_i'jr') = (1-ρ) * τ(O_ijr, O_i'jr') + ρ * (1/makespan(S_b))
         # TODO (potentially): Implement better global updating rule
-        for move in best_ant_this_epoch.moves:
-            pheromone_amounts[move] = (1-rho) * pheromone_amounts[move] + rho * (1/best_makespan_this_epoch)
+        if (time_limit == None or time.time() - start < time_limit):
+            for move in best_ant_this_epoch.moves:
+                pheromone_amounts[move] = (1-rho) * pheromone_amounts[move] + rho * (1/best_ant_this_epoch.makespan)
 
         # Total best evaluation: if (makespan(S_best_this_epoch) < makespan(S_total_best))
         # Then
@@ -442,9 +467,8 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
         # Else
             # epoch++
         # End if
-        if (best_makespan_this_epoch < best_makespan):
-            best_makespan = best_makespan_this_epoch
-            best_schedule = best_ant_this_epoch
+        if (best_ant_this_epoch.makespan < best_ant_overall.makespan):
+            best_ant_overall = best_ant_this_epoch
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
@@ -456,7 +480,26 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, ti
             # Can be written to a CSV like milp_solution
         # Lowest makespan found = makespan(S_total_best)
             # Can be used as input data for the plot to compare with MILP (see main_experiments)
-    print(best_makespan)
-    # print(best_schedule)
+    print(best_ant_overall.makespan)
+    if best_ant_overall.makespan == sys.maxsize:
+        raise Exception("No solution found")
+    return best_ant_overall
 
-run_solver("FJSP_0")
+def aco_solve(nr_instances, time):
+    solution = []
+    for i in range(0, nr_instances):
+        file_name = 'FJSP_' + str(i)
+        try:
+            makespan = run_solver(file_name, time)
+            solution.append((i, makespan))
+        except Exception as e:
+            # Currently: store nothing in case no feasible solution is found in the time limit
+            print(e)
+            pass
+    return solution
+
+# for i in range(0, 13):
+#     file_name = 'FJSP_' + str(i)
+#     run_solver(file_name, time=30)
+
+aco_solve(1, time=1)
