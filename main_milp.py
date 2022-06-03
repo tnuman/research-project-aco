@@ -25,7 +25,12 @@ def milp_solve(nr_instances, time):
             s = run_solver(file_name, time)
             m = objective_function(s)
             solution.append((i, m))
+            print(f"({i}, {m})")
         except:
             # Currently: store nothing in case no feasible solution is found in the time limit
             pass
     return solution
+
+s = run_solver('FJSP_9', 900)
+m = objective_function(s)
+print(f"({9}, {m})")

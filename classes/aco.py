@@ -25,7 +25,7 @@ beta = 0.4
 # Pheromone evaporation coefficient
 rho = 0.12
 
-pheromone_amounts: dict[Move, float] = {}
+
 
 # TODO: Implement better handling of time_limit
 def run_solver(fileName, time=0):
@@ -114,6 +114,7 @@ def run_solver(fileName, time=0):
     for move in sorted(best_ant.moves, key = lambda x: (x.o_to.job.number, x.o_to.number)):
         file.write(f"{move.machine.number}, {move.o_to.job.number}, {move.o_to.number}, "
                    f"{move.start_time}, {move.o_to.completion_time}\n")
+    file.close()
     return best_ant.makespan
 
 # Input: a weighted digraph WDG = (N_F, A, E_jh, W_N, W_E) ----------------------------------------
@@ -260,6 +261,7 @@ class Machine:
 def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, population_size, max_epochs_without_improvement = -1, time_limit: int = None):
     start = time.time()
 
+    pheromone_amounts: dict[Move, float] = {}
     epochs_without_improvement = 0
     best_ant_overall = Ant(makespan=sys.maxsize)
 
@@ -480,7 +482,7 @@ def ant_colony_optimization(jobs: list[Job], total_number_of_operations: int, po
             # Can be written to a CSV like milp_solution
         # Lowest makespan found = makespan(S_total_best)
             # Can be used as input data for the plot to compare with MILP (see main_experiments)
-    print(best_ant_overall.makespan)
+    # print(best_ant_overall.makespan)
     if best_ant_overall.makespan == sys.maxsize:
         raise Exception("No solution found")
     return best_ant_overall
@@ -492,6 +494,7 @@ def aco_solve(nr_instances, time):
         try:
             makespan = run_solver(file_name, time)
             solution.append((i, makespan))
+            print(f"({i}, {makespan})")
         except Exception as e:
             # Currently: store nothing in case no feasible solution is found in the time limit
             print(e)
@@ -500,6 +503,8 @@ def aco_solve(nr_instances, time):
 
 # for i in range(0, 13):
 #     file_name = 'FJSP_' + str(i)
-#     run_solver(file_name, time=30)
+# run_solver('FJSP_0', time=5)
 
-aco_solve(1, time=1)
+# aco_solve(13, time=60)
+# aco_solve(13, time=300)
+# aco_solve(13, time=900)
