@@ -1,6 +1,5 @@
 import importlib.util
-from classes.milp import FlexibleJobShop
-from classes.milp_utils import calculate_makespan
+from algorithms.milp import FlexibleJobShop
 
 def run_solver(fileName, time=0):
     spec = importlib.util.spec_from_file_location('instance', "instances/" + fileName + '.py')
@@ -11,11 +10,13 @@ def run_solver(fileName, time=0):
                           instance=fileName, changeOvers=mod.changeOvers, orders=mod.orders)
     return alg.build_model("solutions/milp/milp_solution_" + fileName + "_" + str(time) + "s" + '.csv', time)
 
+def calculate_makespan(schedule):
+    comp_times = schedule["Completion"].max()
+    return comp_times.max()
 
 # Set the objective function which will be plotted when running an experiment
 def objective_function(s):
     return calculate_makespan(s)
-
 
 def milp_solve(nr_instances, time):
     solution = []
@@ -27,10 +28,5 @@ def milp_solve(nr_instances, time):
             solution.append((i, m))
             print(f"({i}, {m})")
         except:
-            # Currently: store nothing in case no feasible solution is found in the time limit
             pass
     return solution
-
-s = run_solver('FJSP_9', 900)
-m = objective_function(s)
-print(f"({9}, {m})")

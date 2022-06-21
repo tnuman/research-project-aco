@@ -1,1 +1,0 @@
-Please specify the hardware on which the results where obtained!! (to prevent unfair comparisons)

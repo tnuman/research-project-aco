@@ -33,8 +33,7 @@ processing_times = [[8, 3, 0, 4, 5, 0],  # preparation, [enzyme0, enzyme1, enzym
 change_overs_csv = pd.read_csv("instances/input/change_overs.csv")
 change_overs = {}
 for index, row in change_overs_csv.iterrows():
-   change_overs[(row['Machine'], row['Product1'], row['Product2'])] = row["ChangeOver"]
-
+    change_overs[(row['Machine'], row['Product1'], row['Product2'])] = row["ChangeOver"]
 
 operations = {}
 machineAlternatives = {}

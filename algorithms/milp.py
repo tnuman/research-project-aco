@@ -108,10 +108,3 @@ class FlexibleJobShop:
         schedule.to_csv(csv_output, index=False)
 
         return schedule
-
-
-
-
-
-
-
